@@ -30,7 +30,7 @@ impl Decoder for EnumCodec {
         let newline = src.as_ref().iter().position(|b| *b == b'\n');
         if let Some(n) = newline {
             let mut line = src.split_to(n + 1);
-            println!("line: {:?}", line);
+            // println!("line: {:?}", line);
             let mut line = line.split_to(line.len() - 1);
             if line.is_empty() {
                 return Ok(None);

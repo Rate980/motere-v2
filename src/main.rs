@@ -11,6 +11,7 @@ use tire::Tire;
 
 use tokio_serial::{SerialPortBuilderExt, SerialStream};
 use tokio_util::codec::{Decoder, Framed};
+static mut is_running: bool = false;
 
 #[inline]
 fn tty_setting(path: &str, rate: u32) -> tokio_serial::Result<Framed<SerialStream, EnumCodec>> {
@@ -26,7 +27,7 @@ fn tty_setting(path: &str, rate: u32) -> tokio_serial::Result<Framed<SerialStrea
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut infrared = tty_setting(INFRARED_PATH, INFRARED_RATE)?;
-    // let mut ble = tty_setting(BLE_PATH, BLE_RATE)?;
+    let mut ble = tty_setting(BLE_PATH, BLE_RATE)?;
     // let mut spresense = tty_setting(SPRESENSE_PATH, SPRESENSE_RATE)?;
 
     let gpio = Gpio::new()?;
@@ -57,6 +58,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     continue;
                 }
             };
+            let now = unsafe { is_running };
+            if !now {
+                right_tire.blake().await;
+                left_tire.blake().await;
+                continue;
+            }
             // let line = line_result.expect("Failed to read line");
             let mut line = match line_result {
                 Ok(x) => x,
@@ -93,11 +100,34 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
 
     // BLE task
-    // tokio::spawn(async move {
-    //     while let Some(line_result) = ble.next().await {
-    //         let line = line_result.expect("Failed to read line");
-    //     }
-    // });
+    tokio::spawn(async move {
+        loop {
+            let line_result = match ble.next().await {
+                Some(x) => x,
+                None => {
+                    continue;
+                }
+            };
+            let mut line = match line_result {
+                Ok(x) => x,
+                Err(e) => {
+                    println!("Error: {}", e);
+                    continue;
+                }
+            };
+            match line {
+                4 | 0 => {
+                    println!("stop");
+                    unsafe { is_running = false };
+                }
+                3 => {
+                    println!("start");
+                    unsafe { is_running = true };
+                }
+                _ => (),
+            }
+        }
+    });
     handle.await.unwrap();
     Ok(())
 }
